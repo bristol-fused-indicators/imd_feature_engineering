@@ -1,5 +1,4 @@
 from enum import StrEnum
-from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import hashlib
@@ -59,7 +58,7 @@ class FeatureSetConfig(BaseModel):
 
     name: str
     groups: dict[str, GroupConfig]
-    description: str | None
+    description: str | None = None
 
     @model_validator(mode="after")
     def validate_no_group_overlap(self):
@@ -76,10 +75,24 @@ class FeatureSetConfig(BaseModel):
 
         return self
 
+    @model_validator(mode="after")
+    def validate_groups(self) -> "FeatureSetConfig":
+        if len(self.groups) < 1:
+            raise ValueError(
+                "must set at least one group of features."
+                "If you do not intend to treat features in groups, put all features in one group"
+            )
+
+        return self
+
     @property
     def config_hash(self) -> str:
         config_bytes = json.dumps(self.model_dump(), sort_keys=True).encode()
         return hashlib.sha256(config_bytes).hexdigest()[:8]
+
+    @property
+    def output_name(self) -> str:
+        return f"{self.name}_{self.config_hash}"
 
     def create_manifest_dict(self, input_data_hash: str) -> dict:
         return {
@@ -88,7 +101,3 @@ class FeatureSetConfig(BaseModel):
             "input_data_hash": input_data_hash,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-
-    @property
-    def output_name(self) -> str:
-        return f"{self.name}_{self.config_hash}"
