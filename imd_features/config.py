@@ -1,5 +1,8 @@
 from enum import StrEnum
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
+import hashlib
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -72,3 +75,20 @@ class FeatureSetConfig(BaseModel):
                 seen[col] = group_name
 
         return self
+
+    @property
+    def config_hash(self) -> str:
+        config_bytes = json.dumps(self.model_dump(), sort_keys=True).encode()
+        return hashlib.sha256(config_bytes).hexdigest()[:8]
+
+    def create_manifest_dict(self, input_data_hash: str) -> dict:
+        return {
+            **self.model_dump(),
+            "config_hash": self.config_hash,
+            "input_data_hash": input_data_hash,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @property
+    def output_name(self) -> str:
+        return f"{self.name}_{self.config_hash}"
