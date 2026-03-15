@@ -38,6 +38,10 @@ def group_summary(config: FeatureSetConfig, group_metadata: dict) -> pl.DataFram
     return pl.DataFrame(rows)
 
 
+def _correlation_matrix(df: pl.DataFrame) -> np.ndarray:
+    return np.corrcoef(df.to_numpy(), rowvar=False)
+
+
 def correlation_within_groups(
     df: pl.DataFrame, config: FeatureSetConfig
 ) -> dict[str, Figure]:
@@ -48,7 +52,7 @@ def correlation_within_groups(
         if len(cols) < 2:
             continue
 
-        corr = df.select(cols).to_pandas().corr()
+        corr = _correlation_matrix(df.select(cols))
 
         fig, ax = plt.subplots(
             figsize=(max(6, len(cols) * 0.4), max(5, len(cols) * 0.35))
@@ -72,26 +76,27 @@ def correlation_between_groups(df: pl.DataFrame, config: FeatureSetConfig) -> Fi
     group_names = list(group_columns.keys())
     n = len(group_names)
 
-    mean_corr = np.zeros((n, n))
+    mean_abs_corr = np.zeros((n, n))
     for i, name_a in enumerate(group_names):
         for j, name_b in enumerate(group_names):
             if i == j:
-                mean_corr[i, j] = 1.0
-            else:
-                cols_a = group_columns[name_a]
-                cols_b = group_columns[name_b]
-                if not cols_a or not cols_b:
-                    mean_corr[i, j] = 0.0
-                    continue
-                cross = np.abs(
-                    df.select(cols_a)
-                    .to_pandas()
-                    .corrwith(df.select(cols_b).to_pandas())
-                )
-                mean_corr[i, j] = cross.mean()
+                mean_abs_corr[i, j] = 1.0
+                continue
+
+            cols_a = group_columns[name_a]
+            cols_b = group_columns[name_b]
+            if not cols_a or not cols_b:
+                mean_abs_corr[i, j] = 0.0
+                continue
+
+            combined = df.select(cols_a + cols_b)
+            full_corr = _correlation_matrix(combined)
+
+            cross_block = full_corr[: len(cols_a), len(cols_a) :]
+            mean_abs_corr[i, j] = np.abs(cross_block).mean()
 
     fig, ax = plt.subplots(figsize=(max(6, n * 1.2), max(5, n)))
-    im = ax.imshow(mean_corr, cmap="YlOrRd", vmin=0, vmax=1, aspect="auto")
+    im = ax.imshow(mean_abs_corr, cmap="YlOrRd", vmin=0, vmax=1, aspect="auto")
     ax.set_xticks(range(n))
     ax.set_yticks(range(n))
     ax.set_xticklabels(group_names, rotation=45, ha="right")
@@ -100,7 +105,7 @@ def correlation_between_groups(df: pl.DataFrame, config: FeatureSetConfig) -> Fi
     for i in range(n):
         for j in range(n):
             ax.text(
-                j, i, f"{mean_corr[i, j]:.2f}", ha="center", va="center", fontsize=9
+                j, i, f"{mean_abs_corr[i, j]:.2f}", ha="center", va="center", fontsize=9
             )
     fig.colorbar(im, ax=ax, shrink=0.8)
     fig.tight_layout()
@@ -110,7 +115,7 @@ def correlation_between_groups(df: pl.DataFrame, config: FeatureSetConfig) -> Fi
 
 def correlation_full(df: pl.DataFrame) -> Figure:
     cols = [c for c in df.columns if c != "lsoa_code"]
-    corr = df.select(cols).to_pandas().corr()
+    corr = _correlation_matrix(df.select(cols))
 
     fig, ax = plt.subplots(figsize=(16, 14))
     im = ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1, aspect="auto")
