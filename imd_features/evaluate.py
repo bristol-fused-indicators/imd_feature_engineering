@@ -80,17 +80,15 @@ def evaluate_model(
             }
         )
 
-    ic(r2_scores, rmse_scores, spearman_scores, feature_importance, group_importance)
-
     return {
-        "r2_mean": ...,
-        "r2_std": ...,
-        "rmse_mean": ...,
-        "rmse_std": ...,
-        "spearman_mean": ...,
-        "spearman_std": ...,
-        "feature_importance": ...,
-        "group_importance": ...,
+        "r2_mean": float(np.mean(r2_scores)),
+        "r2_std": float(np.std(r2_scores)),
+        "rmse_mean": float(np.mean(rmse_scores)),
+        "rmse_std": float(np.std(rmse_scores)),
+        "spearman_mean": float(np.mean(spearman_scores)),
+        "spearman_std": float(np.std(spearman_scores)),
+        "feature_importance": feature_importance,
+        "group_importance": group_importance,
     }
 
 
