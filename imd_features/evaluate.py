@@ -1,9 +1,40 @@
 import polars as pl
 from imd_features.config import FeatureSetConfig
+from imd_features.inspect import resolve_output_columns
 
 from project_paths import paths
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+
+
+def evaluate_model(
+    X: np.ndarray,
+    y: np.ndarray,
+    model,
+    feature_columns: list[str],
+    group_columns: dict[str, list[str]],
+) -> dict:
+
+    k_fold = ...
+
+    r2_scores = []
+    rmse_scores = []
+    spearman_scores = []
+    importance_per_fold = []
+
+    ...
+
+    return {
+        "r2_mean": ...,
+        "r2_std": ...,
+        "rmse_mean": ...,
+        "rmse_std": ...,
+        "spearman_mean": ...,
+        "spearman_std": ...,
+        "feature_importance": ...,
+        "group_importance": ...,
+    }
 
 
 def evaluate(
@@ -18,10 +49,7 @@ def evaluate(
     X = combined.select(feature_cols).to_numpy()
     y = combined.select(target).to_numpy().ravel()
 
-    ...
-    group_columns = ...  # todo
-
-    ...
+    group_columns = resolve_output_columns(df=df, config=config)
 
     models = {
         "ridge": Ridge(alpha=1.0),
@@ -32,10 +60,6 @@ def evaluate(
 
     results = {}
     for model_name, model in models.items():
-        # evaluate each model, get some results
-        # update results for each model name
-        ...
+        results[model_name] = evaluate_model(X, y, model, feature_cols, group_columns)
 
-    #! placeholders to make lsp shut up
-    results = {}
     return results

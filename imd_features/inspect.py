@@ -153,7 +153,7 @@ def distribution_plot(df: pl.DataFrame, config: FeatureSetConfig) -> Figure:
 # for helping with mapping original columns to reduced columns
 # should revisit if strong contract is established with imd pipeline with manifest file
 # or emit this info from the process funcs
-def _resolve_output_columns(
+def resolve_output_columns(
     df: pl.DataFrame, config: FeatureSetConfig
 ) -> dict[str, list[str]]:
     group_columns = {}
