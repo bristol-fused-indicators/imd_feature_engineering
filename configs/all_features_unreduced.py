@@ -28,5 +28,5 @@ config = FeatureSetConfig(
 
 
 if __name__ == "__main__":
-    df = create_feature_set(INPUT_PATH, config)
+    df, _ = create_feature_set(INPUT_PATH, config)
     print(f"Created {config.output_name}: {df.shape[0]} rows, {df.shape[1]} columns")
