@@ -6,6 +6,11 @@ from project_paths import paths
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 import numpy as np
+from sklearn.model_selection import KFold
+from sklearn.base import clone
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from scipy.stats import spearmanr
+from scipy 
 
 
 def evaluate_model(
@@ -16,15 +21,32 @@ def evaluate_model(
     group_columns: dict[str, list[str]],
 ) -> dict:
 
-    k_fold = ...
+    k_fold = KFold(n_splits=5, shuffle=True, random_state=42)
 
     r2_scores = []
     rmse_scores = []
     spearman_scores = []
     importance_per_fold = []
 
-    ...
+    for train_idx, test_idx in k_fold.split(X):
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
 
+        model_clone = clone(model)
+        model_clone.fit(X_train, y_train)
+        y_pred = model_clone.predict(X_test)
+
+        r2_scores.append(r2_score(y_test, y_pred))
+        rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
+        spearman_scores.append(spearmanr(y_test, y_pred).statistic) # type: ignore (checked attribute exists in src code)
+
+        if isinstance(model_clone, RandomForestRegressor):
+            importance_per_fold.append(model_clone.feature_importances_)
+        elif isinstance(model_clone, Ridge):
+            importance_per_fold.append(np.abs(model_clone.coef_))
+
+
+            
     return {
         "r2_mean": ...,
         "r2_std": ...,
