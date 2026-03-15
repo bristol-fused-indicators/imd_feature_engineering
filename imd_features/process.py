@@ -17,17 +17,19 @@ import hashlib
 
 def process_group(
     df: pl.DataFrame, group_name: str, group_config: GroupConfig
-) -> pl.DataFrame:
+) -> tuple[pl.DataFrame, dict]:
 
+    metadata = {}
     data = df.to_numpy()
 
     if group_config.scale:
         data = apply_scaling(data)
 
     if group_config.reduction_method != ReductionMethod.NONE:
-        data = reduce_dimensions(
+        data, reduction_metadata = reduce_dimensions(
             data, group_config.reduction_method, group_config.n_components
         )
+        metadata.update(reduction_metadata)
         columns = [
             f"{group_name}_{group_config.reduction_method.value}_{i + 1}"
             for i in range(data.shape[1])
@@ -35,12 +37,13 @@ def process_group(
     else:
         columns = df.columns
 
-    return pl.DataFrame(data, schema=columns)
+    return pl.DataFrame(data, schema=columns), metadata
 
 
 def reduce_dimensions(
     data: np.ndarray, method: ReductionMethod, n_components: int
-) -> np.ndarray:
+) -> tuple[np.ndarray, dict]:
+
     if method == ReductionMethod.PCA:
         reducer = PCA(n_components=n_components, random_state=1)
 
@@ -60,7 +63,25 @@ def reduce_dimensions(
     else:
         raise ValueError(f"Unknown reduction method: {method}")
 
-    return reducer.fit_transform(data)
+    reduced = reducer.fit_transform(data)
+
+    metadata = {}
+    if isinstance(reducer, PCA):
+        metadata["explained_variance_ratio"] = (
+            reducer.explained_variance_ratio_.tolist()
+        )
+        metadata["total_explained_variance"] = sum(reducer.explained_variance_ratio_)
+    elif isinstance(reducer, NMF):
+        metadata["reconstruction_error"] = float(reducer.reconstruction_err_)
+    elif isinstance(reducer, FactorAnalysis):
+        metadata["noise_variance"] = reducer.noise_variance_.tolist()
+        metadata["mean_noise_variance"] = float(np.mean(reducer.noise_variance_))
+        metadata["log_likelihood"] = float(reducer.loglike_[-1])
+    elif isinstance(reducer, FastICA):
+        metadata["n_iterations"] = int(reducer.n_iter_)
+        metadata["converged"] = reducer.n_iter_ < 500
+
+    return reduced, metadata
 
 
 def apply_scaling(data: np.ndarray) -> np.ndarray:
@@ -77,7 +98,9 @@ def compute_input_hash(path: Path) -> str:
     return hashlib.sha256(schema_str.encode()).hexdigest()[:8]
 
 
-def create_feature_set(input_data: Path, config: FeatureSetConfig) -> pl.DataFrame:
+def create_feature_set(
+    input_data: Path, config: FeatureSetConfig
+) -> tuple[pl.DataFrame, dict]:
 
     input_df = pl.read_parquet(input_data)
     null_counts = input_df.null_count()
@@ -87,11 +110,12 @@ def create_feature_set(input_data: Path, config: FeatureSetConfig) -> pl.DataFra
     input_hash = compute_input_hash(input_data)
 
     id_column = input_df.select("lsoa_code")
-    group_dfs = [id_column]
+    group_dfs, group_metadata = [id_column], {}
     for group_name, group_config in config.groups.items():
         group_df = input_df.select(group_config.columns)
-        group_df = process_group(group_df, group_name, group_config)
+        group_df, metadata = process_group(group_df, group_name, group_config)
         group_dfs.append(group_df)
+        group_metadata[group_name] = metadata
 
     featureset_df = pl.concat(group_dfs, how="horizontal")
 
@@ -102,4 +126,4 @@ def create_feature_set(input_data: Path, config: FeatureSetConfig) -> pl.DataFra
     manifest_path = paths.output / f"{output_stem}_config.json"
     manifest_path.write_text(json.dumps(manifest))
 
-    return featureset_df
+    return featureset_df, group_metadata
