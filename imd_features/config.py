@@ -15,7 +15,7 @@ class ReductionMethod(StrEnum):
 
 
 class GroupConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = model_config = ConfigDict(frozen=True, extra="ignore")
 
     columns: list[str]
     scale: bool = False
@@ -54,7 +54,7 @@ class GroupConfig(BaseModel):
 
 
 class FeatureSetConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = model_config = ConfigDict(frozen=True, extra="ignore")
 
     name: str
     groups: dict[str, GroupConfig]

@@ -1,6 +1,6 @@
 import polars as pl
 from imd_features.config import FeatureSetConfig
-from imd_features.inspect import resolve_output_columns
+from imd_features.diagnostic import resolve_output_columns
 
 from project_paths import paths
 from sklearn.linear_model import Ridge
@@ -10,7 +10,9 @@ from sklearn.model_selection import KFold
 from sklearn.base import clone
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from scipy.stats import spearmanr
-from scipy 
+# from scipy
+
+from icecream import ic
 
 
 def evaluate_model(
@@ -38,15 +40,48 @@ def evaluate_model(
 
         r2_scores.append(r2_score(y_test, y_pred))
         rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
-        spearman_scores.append(spearmanr(y_test, y_pred).statistic) # type: ignore (checked attribute exists in src code)
+        spearman_scores.append(spearmanr(y_test, y_pred).statistic)  # type: ignore (checked attribute exists in src code)
 
         if isinstance(model_clone, RandomForestRegressor):
             importance_per_fold.append(model_clone.feature_importances_)
         elif isinstance(model_clone, Ridge):
             importance_per_fold.append(np.abs(model_clone.coef_))
 
+    importance_mean = np.mean(importance_per_fold, axis=0)
+    importance_std = np.std(importance_per_fold, axis=0)
 
-            
+    col_to_group = {}
+    for group_name, cols in group_columns.items():
+        for col in cols:
+            col_to_group[col] = group_name
+
+    feature_importance = [
+        {
+            "feature": col,
+            "group": col_to_group.get(col, "unknown"),
+            "importance_mean": float(importance_mean[i]),
+            "importance_std": float(importance_std[i]),
+        }
+        for i, col in enumerate(feature_columns)
+    ]
+
+    group_importance = []
+    for group_name, cols in group_columns.items():
+        indices = [i for i, c in enumerate(feature_columns) if c in set(cols)]
+        if not indices:
+            continue
+        group_imp = importance_mean[indices]
+        group_importance.append(
+            {
+                "group": group_name,
+                "total_importance": float(group_imp.sum()),
+                "mean_importance": float(group_imp.mean()),
+                "n_features": len(indices),
+            }
+        )
+
+    ic(r2_scores, rmse_scores, spearman_scores, feature_importance, group_importance)
+
     return {
         "r2_mean": ...,
         "r2_std": ...,
@@ -63,7 +98,7 @@ def evaluate(
     df: pl.DataFrame, config: FeatureSetConfig, target: str = "score"
 ) -> dict[str, dict]:
 
-    target_df = pl.read_parquet(paths.reference / "imd_target.parquet")
+    target_df = pl.read_parquet(paths.reference)
 
     combined = df.join(target_df, on="lsoa_code", how="inner")
 
@@ -85,3 +120,10 @@ def evaluate(
         results[model_name] = evaluate_model(X, y, model, feature_cols, group_columns)
 
     return results
+
+
+if __name__ == "__main__":
+    data = pl.read_parquet(paths.input_file)
+    config_path = paths.output / "mixed_reduction_b78f17cd_config.json"
+    config = FeatureSetConfig.model_validate_json(config_path.read_text())
+    evaluate(data, config)

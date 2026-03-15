@@ -22,7 +22,11 @@ dependencies = [
     "scipy>=1.17.1",
 ]
 
+[dependency-groups]
+dev = ["icecream>=2.1.10", "ruff>=0.15.6"]
+
 
 [tool.project-paths]
 output = "./data/output"
 input_file = "./data/input/combined_data.parquet"
+reference = "./data/input/imd_target.parquet"
