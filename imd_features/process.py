@@ -3,6 +3,13 @@ from imd_features.config import FeatureSetConfig, GroupConfig, ReductionMethod
 import polars as pl
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import (
+    PCA,
+    FactorAnalysis,
+    FastICA,
+    NMF,
+    non_negative_factorization,
+)
 from project_paths import paths
 import json
 import hashlib
@@ -10,15 +17,55 @@ import hashlib
 
 def process_group(
     df: pl.DataFrame, group_name: str, group_config: GroupConfig
-) -> pl.DataFrame: ...
+) -> pl.DataFrame:
+
+    data = df.to_numpy()
+
+    if group_config.scale:
+        data = apply_scaling(data)
+
+    if group_config.reduction_method != ReductionMethod.NONE:
+        data = reduce_dimensions(
+            data, group_config.reduction_method, group_config.n_components
+        )
+        columns = [
+            f"{group_name}_{group_config.reduction_method.value}_{i + 1}"
+            for i in range(data.shape[1])
+        ]
+    else:
+        columns = df.columns
+
+    return pl.DataFrame(data, schema=columns)
 
 
 def reduce_dimensions(
     data: np.ndarray, method: ReductionMethod, n_components: int
-) -> tuple[np.ndarray, object]: ...
+) -> np.ndarray:
+    if method == ReductionMethod.PCA:
+        reducer = PCA(n_components=n_components, random_state=1)
+
+    elif method == ReductionMethod.NMF:
+        if np.any(data < 0):
+            raise ValueError("NMF requires non negative input")
+        reducer = NMF(n_components=n_components, random_state=1, max_iter=500)
+
+    elif method == ReductionMethod.FA:
+        reducer = FactorAnalysis(
+            n_components=n_components, rotation="varimax", random_state=1
+        )
+
+    elif method == ReductionMethod.ICA:
+        reducer = FastICA(n_components=n_components, random_state=1, max_iter=500)
+
+    else:
+        raise ValueError(f"Unknown reduction method: {method}")
+
+    return reducer.fit_transform(data)
 
 
-def apply_scaling(data: np.ndarray) -> tuple[np.ndarray, StandardScaler]: ...
+def apply_scaling(data: np.ndarray) -> np.ndarray:
+    scaler = StandardScaler()
+    return scaler.fit_transform(data)
 
 
 def compute_input_hash(path: Path) -> str:
