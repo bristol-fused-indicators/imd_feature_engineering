@@ -80,6 +80,10 @@ def compute_input_hash(path: Path) -> str:
 def create_feature_set(input_data: Path, config: FeatureSetConfig) -> pl.DataFrame:
 
     input_df = pl.read_parquet(input_data)
+    null_counts = input_df.null_count()
+    if null_counts.sum_horizontal().item() > 0:
+        raise ValueError("Input data contains null values, provide a clean parquet.")
+
     input_hash = compute_input_hash(input_data)
 
     id_column = input_df.select("lsoa_code")
