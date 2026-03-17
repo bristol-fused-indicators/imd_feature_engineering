@@ -11,7 +11,14 @@ OUTPUT_DIR = paths.output
 
 
 def find_config_files(output_dir: Path) -> list[Path]:
-    configs = sorted(output_dir.glob("*_config.json"))
+    configs = [
+        file
+        for file in output_dir.glob("*_config.json")
+        if not str(file.parts[-1]).startswith(
+            "eng"
+        )  # ignore files where new features have been created
+    ]
+
     return configs
 
 
