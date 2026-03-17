@@ -95,7 +95,7 @@ config = FeatureSetConfig(
         ),
         "land_registry": GroupConfig(
             columns=[
-                "lsoa_average_price",
+                "lsoa_mean_price",
                 "lsoa_max_price",
                 "T_mean_price",
                 "F_mean_price",
@@ -140,7 +140,7 @@ config = FeatureSetConfig(
                 ]
                 for dist in [0, 250, 500, 750, 1000, 1250, 1500, 2000, 2500, 5000]
             ]
-            + ["nearest_shop", "ratio_fastfood_to_dining_1000"],
+            + ["nearest_shop", "ratio_fast_food_takeaway_to_food_dining_1000"],
             scale=True,
             reduction_method=ReductionMethod.PCA,
             n_components=15,

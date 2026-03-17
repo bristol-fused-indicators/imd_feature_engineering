@@ -129,7 +129,7 @@ def correlation_full(df: pl.DataFrame) -> Figure:
 
 
 def distribution_plot(df: pl.DataFrame, config: FeatureSetConfig) -> Figure:
-    group_columns = _resolve_output_columns(df, config)
+    group_columns = resolve_output_columns(df, config)
     group_names = [name for name, cols in group_columns.items() if cols]
     n = len(group_names)
 

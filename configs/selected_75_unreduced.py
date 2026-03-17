@@ -52,7 +52,7 @@ config = FeatureSetConfig(
         ),
         "land_registry": GroupConfig(
             columns=[
-                "lsoa_average_price",
+                "lsoa_mean_price",
                 "lsoa_max_price",
                 "total_transactions",
                 "T_mean_price",
@@ -84,7 +84,7 @@ config = FeatureSetConfig(
                 "count_childcare_early_years_500",
                 "count_childcare_early_years_1000",
                 "nearest_shop",
-                "ratio_fastfood_to_dining_1000",
+                "ratio_fast_food_takeaway_to_food_dining_1000",
             ],
         ),
         "osm_landuse": GroupConfig(

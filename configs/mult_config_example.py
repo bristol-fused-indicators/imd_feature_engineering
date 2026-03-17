@@ -46,7 +46,7 @@ OSM_AMENITIES = [
         "essential_services",
     ]
     for dist in [500, 1000, 2000]
-] + ["nearest_shop", "ratio_fastfood_to_dining_1000"]
+] + ["nearest_shop", "ratio_fast_food_takeaway_to_food_dining_1000"]
 
 REDUCTION_METHODS = [ReductionMethod.PCA, ReductionMethod.FA]
 N_COMPONENTS = [3, 5, 8]
