@@ -23,6 +23,10 @@ def slx_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
     spearman_scores = []
     importance_per_fold = []
 
+
+    base_r2_scores = []
+    base_rmse_scores = []
+
     W, groups = fetch_spatial_support_data()
 
     gkf = GroupKFold(n_splits=5)
@@ -32,18 +36,21 @@ def slx_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
         y_train, y_test = y[train_idx], y[test_idx]
 
         WX_train = W[np.ix_(train_idx, train_idx)] @ X_train
-        WX_test  = W[np.ix_(test_idx, test_idx)]  @ X_test
+        WX_test  = W[np.ix_(test_idx, train_idx)]  @ X_train
 
         X_train_slx = np.hstack([X_train, WX_train])
         X_test_slx = np.hstack([X_test, WX_test])
 
         k = X_train.shape[1] # index for cutoff on direct vs neighbor features
 
-        model = model_spec['model'].fit(X_train_slx, y_train)
+        model = clone(model_spec['model'])
+        model.fit(X_train_slx, y_train)
         y_pred = model.predict(X_test_slx)
 
         beta = model.coef_[:k]      # direct effects
         theta = model.coef_[k:]     # spatial lag effects
+
+        base_r2_scores.append(r2_score(y_test, Ridge(alpha=0.1).fit(X_train, y_train).predict(X_test)))  # without spatial lags
 
         r2_scores.append(r2_score(y_test, y_pred))
         rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
@@ -51,6 +58,8 @@ def slx_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
         importance_per_fold.append(np.abs(beta) + np.abs(theta))  # simple way to combine direct and spatial effects for importance
     
     print(r2_scores)
+    print(base_r2_scores)
+    print(rmse_scores)
 
     return r2_scores, rmse_scores, spearman_scores, importance_per_fold  
 
@@ -90,6 +99,8 @@ def evaluate_model(
                 importance_per_fold.append(model_clone.feature_importances_)
             elif isinstance(model_clone, Ridge):
                 importance_per_fold.append(np.abs(model_clone.coef_))
+        
+        print(r2_scores)
 
     importance_mean = np.mean(importance_per_fold, axis=0)
     importance_std = np.std(importance_per_fold, axis=0)
@@ -156,7 +167,7 @@ def evaluate(
         ),
         "slx": {'model_type': 'SLX',
                 'reg_type': 'Ridge',
-                'model': Ridge(alpha=1.0)},  
+                'model': Ridge(alpha=0.1)},  
     }
 
     results = {}
