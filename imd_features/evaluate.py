@@ -34,20 +34,8 @@ def produce_cluster_groups():
     
     return None  # Replace with actual cluster groups array
 
-def spatial_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
-    
-    # Placeholder for spatial cross-validation implementation
-    
+def fetch_spatial_support_data():
 
-    # Needs as input the feature set as well as the spatial coords of assosciated lsoas
-    
-    
-    # This function should implement a spatial cross-validation strategy, such as:
-    # - Creating spatial folds based on geographic proximity
-    # - Ensuring that training and testing sets are spatially separated
-    # - Evaluating the model on each fold and aggregating results
-    # Do this in a way that follows established convention from evaluate_model, returning a dictionary of results similar to the non-spatial case.
-    
     if os.path.exists(paths.spatial_weights):
         W = np.load(paths.spatial_weights)
     else:
@@ -59,6 +47,17 @@ def spatial_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
     else:
         groups = produce_cluster_groups()  # Placeholder for cluster group creation
         np.save(paths.cluster_groups, groups)
+    
+    return W, groups
+
+def slx_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
+    
+    r2_scores = []
+    rmse_scores = []
+    spearman_scores = []
+    importance_per_fold = []
+
+    W, groups = fetch_spatial_support_data()
 
     gkf = GroupKFold(n_splits=5)
 
@@ -84,10 +83,13 @@ def spatial_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
         beta = model.coef_[:k]      # direct effects
         theta = model.coef_[k:]     # spatial lag effects
 
-        print("\n\n", r2_score(y_test, y_pred), "\n\n")
+        r2_scores.append(r2_score(y_test, y_pred))
+        rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
+        spearman_scores.append(spearmanr(y_test, y_pred).statistic)  # type: ignore (checked attribute exists in src code)
+        importance_per_fold.append(np.abs(beta) + np.abs(theta))  # simple way to combine direct and spatial effects for importance
     
 
-    return None  # Replace with actual evaluation results
+    return r2_scores, rmse_scores, spearman_scores, importance_per_fold  # Replace with actual evaluation results
 
 def evaluate_model(
     X: np.ndarray,
@@ -97,18 +99,18 @@ def evaluate_model(
     group_columns: dict[str, list[str]],
 ) -> dict:
 
-    k_fold = KFold(n_splits=5, shuffle=True, random_state=42)
-
-    r2_scores = []
-    rmse_scores = []
-    spearman_scores = []
-    importance_per_fold = []
 
     if isinstance(model, dict) and model.get('model_type') == 'SLX':
-
-        spatial_cv(X=X, y=y, model_spec=model)
+        r2_scores, rmse_scores, spearman_scores, importance_per_fold = slx_cv(X=X, y=y, model_spec=model)
     
     else:
+        k_fold = KFold(n_splits=5, shuffle=True, random_state=42)
+
+        r2_scores = []
+        rmse_scores = []
+        spearman_scores = []
+        importance_per_fold = []
+
         for train_idx, test_idx in k_fold.split(X):
             X_train, X_test = X[train_idx], X[test_idx]
             y_train, y_test = y[train_idx], y[test_idx]
