@@ -1,9 +1,7 @@
-import os
-
 import polars as pl
-from sklearn.cluster import KMeans
 from imd_features.config import FeatureSetConfig
 from imd_features.diagnostic import resolve_output_columns
+from imd_features.spatial_utils import fetch_spatial_support_data
 
 from project_paths import paths
 from sklearn.linear_model import Ridge
@@ -17,38 +15,6 @@ from scipy.stats import spearmanr
 
 from icecream import ic
 
-def produce_adjacency_weights():
-    # Placeholder for adjacency weight matrix creation
-    # This function should create a spatial weights matrix (W) based on the adjacency of LSOAs.
-    # For example, you could use a binary contiguity matrix where W[i,j] = 1 if LSOA i and j are neighbors, and 0 otherwise.
-    # Alternatively, you could create a distance-based weight matrix where W[i,j] is a function of the distance between LSOA i and j.
-    
-    # The specific implementation will depend on the spatial data available for the LSOAs, such as their geographic coordinates or boundary shapes.
-    
-    return None  # Replace with actual weight matrix
-
-def produce_cluster_groups():
-    # Placeholder for cluster group creation
-    # This function should create an array of cluster IDs for each LSOA, which can be used in spatial cross-validation.
-    # The cluster IDs could be calculated based on the geographic coordinates of the LSOAs, such as the result of a KMeans clustering algorithm.
-    
-    return None  # Replace with actual cluster groups array
-
-def fetch_spatial_support_data():
-
-    if os.path.exists(paths.spatial_weights):
-        W = np.load(paths.spatial_weights)
-    else:
-        W = produce_adjacency_weights()
-        np.save(paths.spatial_weights, W)
-
-    if os.path.exists(paths.cluster_groups):
-        groups = np.load(paths.cluster_groups)
-    else:
-        groups = produce_cluster_groups()  # Placeholder for cluster group creation
-        np.save(paths.cluster_groups, groups)
-    
-    return W, groups
 
 def slx_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
     
@@ -62,34 +28,31 @@ def slx_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
     gkf = GroupKFold(n_splits=5)
 
     for train_idx, test_idx in gkf.split(X, y, groups=groups):
-        # split
         X_train, X_test = X[train_idx], X[test_idx]
         y_train, y_test = y[train_idx], y[test_idx]
 
         WX_train = W[np.ix_(train_idx, train_idx)] @ X_train
-        WX_test  = W[np.ix_(test_idx, train_idx)]  @ X_train
+        WX_test  = W[np.ix_(test_idx, test_idx)]  @ X_test
 
-        # combine
         X_train_slx = np.hstack([X_train, WX_train])
         X_test_slx = np.hstack([X_test, WX_test])
 
-        k = X_train.shape[1]
+        k = X_train.shape[1] # index for cutoff on direct vs neighbor features
 
-        # model
-        model = Ridge(alpha=1.0).fit(X_train_slx, y_train)
+        model = model_spec['model'].fit(X_train_slx, y_train)
         y_pred = model.predict(X_test_slx)
-
 
         beta = model.coef_[:k]      # direct effects
         theta = model.coef_[k:]     # spatial lag effects
 
         r2_scores.append(r2_score(y_test, y_pred))
         rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
-        spearman_scores.append(spearmanr(y_test, y_pred).statistic)  # type: ignore (checked attribute exists in src code)
+        spearman_scores.append(spearmanr(y_test, y_pred).statistic) 
         importance_per_fold.append(np.abs(beta) + np.abs(theta))  # simple way to combine direct and spatial effects for importance
     
+    print(r2_scores)
 
-    return r2_scores, rmse_scores, spearman_scores, importance_per_fold  # Replace with actual evaluation results
+    return r2_scores, rmse_scores, spearman_scores, importance_per_fold  
 
 def evaluate_model(
     X: np.ndarray,
@@ -193,7 +156,7 @@ def evaluate(
         ),
         "slx": {'model_type': 'SLX',
                 'reg_type': 'Ridge',
-                'alpha': [0.1, 1.0, 10.0, 100.0, 1000.0]},  
+                'model': Ridge(alpha=1.0)},  
     }
 
     results = {}
