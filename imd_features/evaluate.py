@@ -1,4 +1,7 @@
+import os
+
 import polars as pl
+from sklearn.cluster import KMeans
 from imd_features.config import FeatureSetConfig
 from imd_features.diagnostic import resolve_output_columns
 
@@ -6,7 +9,7 @@ from project_paths import paths
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 import numpy as np
-from sklearn.model_selection import KFold
+from sklearn.model_selection import GroupKFold, KFold
 from sklearn.base import clone
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from scipy.stats import spearmanr
@@ -24,8 +27,14 @@ def produce_adjacency_weights():
     
     return None  # Replace with actual weight matrix
 
+def produce_cluster_groups():
+    # Placeholder for cluster group creation
+    # This function should create an array of cluster IDs for each LSOA, which can be used in spatial cross-validation.
+    # The cluster IDs could be calculated based on the geographic coordinates of the LSOAs, such as the result of a KMeans clustering algorithm.
+    
+    return None  # Replace with actual cluster groups array
 
-def spatial_cv():
+def spatial_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
     
     # Placeholder for spatial cross-validation implementation
     
@@ -39,6 +48,45 @@ def spatial_cv():
     # - Evaluating the model on each fold and aggregating results
     # Do this in a way that follows established convention from evaluate_model, returning a dictionary of results similar to the non-spatial case.
     
+    if os.path.exists(paths.spatial_weights):
+        W = np.load(paths.spatial_weights)
+    else:
+        W = produce_adjacency_weights()
+        np.save(paths.spatial_weights, W)
+
+    if os.path.exists(paths.cluster_groups):
+        groups = np.load(paths.cluster_groups)
+    else:
+        groups = produce_cluster_groups()  # Placeholder for cluster group creation
+        np.save(paths.cluster_groups, groups)
+
+    gkf = GroupKFold(n_splits=5)
+
+    for train_idx, test_idx in gkf.split(X, y, groups=groups):
+        # split
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+
+        WX_train = W[np.ix_(train_idx, train_idx)] @ X_train
+        WX_test  = W[np.ix_(test_idx, train_idx)]  @ X_train
+
+        # combine
+        X_train_slx = np.hstack([X_train, WX_train])
+        X_test_slx = np.hstack([X_test, WX_test])
+
+        k = X_train.shape[1]
+
+        # model
+        model = Ridge(alpha=1.0).fit(X_train_slx, y_train)
+        y_pred = model.predict(X_test_slx)
+
+
+        beta = model.coef_[:k]      # direct effects
+        theta = model.coef_[k:]     # spatial lag effects
+
+        print("\n\n", r2_score(y_test, y_pred), "\n\n")
+    
+
     return None  # Replace with actual evaluation results
 
 def evaluate_model(
@@ -57,7 +105,8 @@ def evaluate_model(
     importance_per_fold = []
 
     if isinstance(model, dict) and model.get('model_type') == 'SLX':
-        spatial_cv()
+
+        spatial_cv(X=X, y=y, model_spec=model)
     
     else:
         for train_idx, test_idx in k_fold.split(X):
@@ -127,7 +176,6 @@ def evaluate(
 ) -> dict[str, dict]:
 
     target_df = pl.read_parquet(paths.reference)
-
     combined = df.join(target_df, on="lsoa_code", how="inner")
 
     feature_cols = [c for c in df.columns if c != "lsoa_code"]
