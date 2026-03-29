@@ -14,6 +14,32 @@ from scipy.stats import spearmanr
 
 from icecream import ic
 
+def produce_adjacency_weights():
+    # Placeholder for adjacency weight matrix creation
+    # This function should create a spatial weights matrix (W) based on the adjacency of LSOAs.
+    # For example, you could use a binary contiguity matrix where W[i,j] = 1 if LSOA i and j are neighbors, and 0 otherwise.
+    # Alternatively, you could create a distance-based weight matrix where W[i,j] is a function of the distance between LSOA i and j.
+    
+    # The specific implementation will depend on the spatial data available for the LSOAs, such as their geographic coordinates or boundary shapes.
+    
+    return None  # Replace with actual weight matrix
+
+
+def spatial_cv():
+    
+    # Placeholder for spatial cross-validation implementation
+    
+
+    # Needs as input the feature set as well as the spatial coords of assosciated lsoas
+    
+    
+    # This function should implement a spatial cross-validation strategy, such as:
+    # - Creating spatial folds based on geographic proximity
+    # - Ensuring that training and testing sets are spatially separated
+    # - Evaluating the model on each fold and aggregating results
+    # Do this in a way that follows established convention from evaluate_model, returning a dictionary of results similar to the non-spatial case.
+    
+    return None  # Replace with actual evaluation results
 
 def evaluate_model(
     X: np.ndarray,
@@ -30,22 +56,26 @@ def evaluate_model(
     spearman_scores = []
     importance_per_fold = []
 
-    for train_idx, test_idx in k_fold.split(X):
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = y[train_idx], y[test_idx]
+    if isinstance(model, dict) and model.get('model_type') == 'SLX':
+        spatial_cv()
+    
+    else:
+        for train_idx, test_idx in k_fold.split(X):
+            X_train, X_test = X[train_idx], X[test_idx]
+            y_train, y_test = y[train_idx], y[test_idx]
 
-        model_clone = clone(model)
-        model_clone.fit(X_train, y_train)
-        y_pred = model_clone.predict(X_test)
+            model_clone = clone(model)
+            model_clone.fit(X_train, y_train)
+            y_pred = model_clone.predict(X_test)
 
-        r2_scores.append(r2_score(y_test, y_pred))
-        rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
-        spearman_scores.append(spearmanr(y_test, y_pred).statistic)  # type: ignore (checked attribute exists in src code)
+            r2_scores.append(r2_score(y_test, y_pred))
+            rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
+            spearman_scores.append(spearmanr(y_test, y_pred).statistic)  # type: ignore (checked attribute exists in src code)
 
-        if isinstance(model_clone, RandomForestRegressor):
-            importance_per_fold.append(model_clone.feature_importances_)
-        elif isinstance(model_clone, Ridge):
-            importance_per_fold.append(np.abs(model_clone.coef_))
+            if isinstance(model_clone, RandomForestRegressor):
+                importance_per_fold.append(model_clone.feature_importances_)
+            elif isinstance(model_clone, Ridge):
+                importance_per_fold.append(np.abs(model_clone.coef_))
 
     importance_mean = np.mean(importance_per_fold, axis=0)
     importance_std = np.std(importance_per_fold, axis=0)
@@ -111,6 +141,9 @@ def evaluate(
         "random_forest": RandomForestRegressor(
             n_estimators=100, random_state=42, n_jobs=-1
         ),
+        "slx": {'model_type': 'SLX',
+                'reg_type': 'Ridge',
+                'alpha': [0.1, 1.0, 10.0, 100.0, 1000.0]},  
     }
 
     results = {}
@@ -122,6 +155,6 @@ def evaluate(
 
 if __name__ == "__main__":
     data = pl.read_parquet(paths.input_file)
-    config_path = paths.output / "mixed_reduction_b78f17cd_config.json"
+    config_path = paths.output / "all_features_pca_20_1bd1256f_config.json"
     config = FeatureSetConfig.model_validate_json(config_path.read_text())
     evaluate(data, config)
