@@ -57,7 +57,7 @@ def slx_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
         spearman_scores.append(spearmanr(y_test, y_pred).statistic) 
         importance_per_fold.append(np.abs(beta) + np.abs(theta))  # simple way to combine direct and spatial effects for importance
     
-    print(r2_scores)
+    print("slx",r2_scores)
     print(base_r2_scores)
     print(rmse_scores)
 
@@ -100,7 +100,7 @@ def evaluate_model(
             elif isinstance(model_clone, Ridge):
                 importance_per_fold.append(np.abs(model_clone.coef_))
         
-        print(r2_scores)
+        print("rf/ridge", r2_scores)
 
     importance_mean = np.mean(importance_per_fold, axis=0)
     importance_std = np.std(importance_per_fold, axis=0)
@@ -179,6 +179,6 @@ def evaluate(
 
 if __name__ == "__main__":
     data = pl.read_parquet(paths.input_file)
-    config_path = paths.output / "all_features_pca_20_1bd1256f_config.json"
+    config_path = paths.output / "all_features_unreduced_e2827a32_config.json"
     config = FeatureSetConfig.model_validate_json(config_path.read_text())
     evaluate(data, config)
