@@ -1,12 +1,13 @@
 import polars as pl
 from imd_features.config import FeatureSetConfig
 from imd_features.diagnostic import resolve_output_columns
+from imd_features.spatial_utils import fetch_spatial_support_data
 
 from project_paths import paths
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 import numpy as np
-from sklearn.model_selection import KFold
+from sklearn.model_selection import GroupKFold, KFold
 from sklearn.base import clone
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from scipy.stats import spearmanr
@@ -14,6 +15,53 @@ from scipy.stats import spearmanr
 
 from icecream import ic
 
+
+def slx_cv(X: np.ndarray, y: np.ndarray, model_spec: dict) -> dict:
+    
+    r2_scores = []
+    rmse_scores = []
+    spearman_scores = []
+    importance_per_fold = []
+
+
+    base_r2_scores = []
+    base_rmse_scores = []
+
+    W, groups = fetch_spatial_support_data()
+
+    gkf = GroupKFold(n_splits=5)
+
+    for train_idx, test_idx in gkf.split(X, y, groups=groups):
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+
+        WX_train = W[np.ix_(train_idx, train_idx)] @ X_train
+        WX_test  = W[np.ix_(test_idx, train_idx)]  @ X_train
+
+        X_train_slx = np.hstack([X_train, WX_train])
+        X_test_slx = np.hstack([X_test, WX_test])
+
+        k = X_train.shape[1] # index for cutoff on direct vs neighbor features
+
+        model = clone(model_spec['model'])
+        model.fit(X_train_slx, y_train)
+        y_pred = model.predict(X_test_slx)
+
+        beta = model.coef_[:k]      # direct effects
+        theta = model.coef_[k:]     # spatial lag effects
+
+        base_r2_scores.append(r2_score(y_test, Ridge(alpha=0.1).fit(X_train, y_train).predict(X_test)))  # without spatial lags
+
+        r2_scores.append(r2_score(y_test, y_pred))
+        rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
+        spearman_scores.append(spearmanr(y_test, y_pred).statistic) 
+        importance_per_fold.append(np.abs(beta) + np.abs(theta))  # simple way to combine direct and spatial effects for importance
+    
+    print("slx",r2_scores)
+    print(base_r2_scores)
+    print(rmse_scores)
+
+    return r2_scores, rmse_scores, spearman_scores, importance_per_fold  
 
 def evaluate_model(
     X: np.ndarray,
@@ -23,29 +71,36 @@ def evaluate_model(
     group_columns: dict[str, list[str]],
 ) -> dict:
 
-    k_fold = KFold(n_splits=5, shuffle=True, random_state=42)
 
-    r2_scores = []
-    rmse_scores = []
-    spearman_scores = []
-    importance_per_fold = []
+    if isinstance(model, dict) and model.get('model_type') == 'SLX':
+        r2_scores, rmse_scores, spearman_scores, importance_per_fold = slx_cv(X=X, y=y, model_spec=model)
+    
+    else:
+        k_fold = KFold(n_splits=5, shuffle=True, random_state=42)
 
-    for train_idx, test_idx in k_fold.split(X):
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = y[train_idx], y[test_idx]
+        r2_scores = []
+        rmse_scores = []
+        spearman_scores = []
+        importance_per_fold = []
 
-        model_clone = clone(model)
-        model_clone.fit(X_train, y_train)
-        y_pred = model_clone.predict(X_test)
+        for train_idx, test_idx in k_fold.split(X):
+            X_train, X_test = X[train_idx], X[test_idx]
+            y_train, y_test = y[train_idx], y[test_idx]
 
-        r2_scores.append(r2_score(y_test, y_pred))
-        rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
-        spearman_scores.append(spearmanr(y_test, y_pred).statistic)  # type: ignore (checked attribute exists in src code)
+            model_clone = clone(model)
+            model_clone.fit(X_train, y_train)
+            y_pred = model_clone.predict(X_test)
 
-        if isinstance(model_clone, RandomForestRegressor):
-            importance_per_fold.append(model_clone.feature_importances_)
-        elif isinstance(model_clone, Ridge):
-            importance_per_fold.append(np.abs(model_clone.coef_))
+            r2_scores.append(r2_score(y_test, y_pred))
+            rmse_scores.append(np.sqrt(mean_squared_error(y_test, y_pred)))
+            spearman_scores.append(spearmanr(y_test, y_pred).statistic)  # type: ignore (checked attribute exists in src code)
+
+            if isinstance(model_clone, RandomForestRegressor):
+                importance_per_fold.append(model_clone.feature_importances_)
+            elif isinstance(model_clone, Ridge):
+                importance_per_fold.append(np.abs(model_clone.coef_))
+        
+        print("rf/ridge", r2_scores)
 
     importance_mean = np.mean(importance_per_fold, axis=0)
     importance_std = np.std(importance_per_fold, axis=0)
@@ -97,7 +152,6 @@ def evaluate(
 ) -> dict[str, dict]:
 
     target_df = pl.read_parquet(paths.reference)
-
     combined = df.join(target_df, on="lsoa_code", how="inner")
 
     feature_cols = [c for c in df.columns if c != "lsoa_code"]
@@ -111,6 +165,9 @@ def evaluate(
         "random_forest": RandomForestRegressor(
             n_estimators=100, random_state=42, n_jobs=-1
         ),
+        "slx": {'model_type': 'SLX',
+                'reg_type': 'Ridge',
+                'model': Ridge(alpha=0.1)},  
     }
 
     results = {}
@@ -122,6 +179,6 @@ def evaluate(
 
 if __name__ == "__main__":
     data = pl.read_parquet(paths.input_file)
-    config_path = paths.output / "mixed_reduction_b78f17cd_config.json"
+    config_path = paths.output / "all_features_unreduced_e2827a32_config.json"
     config = FeatureSetConfig.model_validate_json(config_path.read_text())
     evaluate(data, config)

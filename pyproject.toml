@@ -30,3 +30,5 @@ dev = ["icecream>=2.1.10", "ruff>=0.15.6"]
 output = "./data/output"
 input_file = "./data/input/combined_data.parquet"
 reference = "./data/input/imd_target.parquet"
+spatial_weights = "./data/input/spatial_weights.npy"
+cluster_groups = "./data/input/cluster_groups.npy"
