@@ -12,14 +12,19 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "geopandas>=1.1.3",
     "ipykernel>=7.2.0",
     "matplotlib>=3.10.8",
+    "nbconvert>=7.17.0",
     "numpy>=2.4.3",
+    "pandas>=3.0.2",
+    "pandoc>=2.4",
     "polars>=1.39.0",
     "project-paths>=1.1.1",
     "pydantic>=2.12.5",
     "scikit-learn>=1.8.0",
     "scipy>=1.17.1",
+    "tabulate>=0.10.0",
 ]
 
 [dependency-groups]
@@ -32,3 +37,5 @@ input_file = "./data/input/combined_data.parquet"
 reference = "./data/input/imd_target.parquet"
 spatial_weights = "./data/input/spatial_weights.npy"
 cluster_groups = "./data/input/cluster_groups.npy"
+polygons = "./data/reference/lsoa_boundaries.gpkg"
+lads = "./data/reference/lsoa_lookup.csv"
