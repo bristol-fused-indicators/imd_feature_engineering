@@ -12,3 +12,7 @@ wheels/
 
 data/**/*.parquet
 !data/input/imd_target.parquet
+
+notebooks/*.pdf
+notebooks/*.tex
+notebooks/*.png
