@@ -16,14 +16,17 @@ import hashlib
 
 
 def process_group(
-    df: pl.DataFrame, group_name: str, group_config: GroupConfig
-) -> tuple[pl.DataFrame, dict]:
+    df: pl.DataFrame,
+    group_name: str,
+    group_config: GroupConfig,
+    scaler: StandardScaler | None = None,
+) -> tuple[pl.DataFrame, dict, StandardScaler | None]:
 
     metadata = {}
     data = df.to_numpy()
 
     if group_config.scale:
-        data = apply_scaling(data)
+        data, scaler = apply_scaling(data, scaler)
 
     if group_config.reduction_method != ReductionMethod.NONE:
         data, reduction_metadata = reduce_dimensions(
@@ -37,7 +40,7 @@ def process_group(
     else:
         columns = df.columns
 
-    return pl.DataFrame(data, schema=columns), metadata
+    return pl.DataFrame(data, schema=columns), metadata, scaler
 
 
 def reduce_dimensions(
@@ -84,9 +87,13 @@ def reduce_dimensions(
     return reduced, metadata
 
 
-def apply_scaling(data: np.ndarray) -> np.ndarray:
-    scaler = StandardScaler()
-    return scaler.fit_transform(data)
+def apply_scaling(
+    data: np.ndarray, scaler: StandardScaler | None = None
+) -> tuple[np.ndarray, StandardScaler]:
+    if scaler is None:
+        scaler = StandardScaler()
+        return scaler.fit_transform(data), scaler
+    return scaler.transform(data), scaler
 
 
 def compute_input_hash(path: Path) -> str:
@@ -99,8 +106,11 @@ def compute_input_hash(path: Path) -> str:
 
 
 def create_feature_set(
-    input_data: Path, config: FeatureSetConfig
-) -> tuple[pl.DataFrame, dict]:
+    input_data: Path,
+    config: FeatureSetConfig,
+    fitted_scalers: dict[str, StandardScaler] | None = None,
+) -> tuple[pl.DataFrame, dict, dict[str, StandardScaler | None]]:
+    fitted_scalers = fitted_scalers or {}  # replace None so dict methods work
 
     input_df = pl.read_parquet(input_data)
     null_counts = input_df.null_count()
@@ -111,11 +121,16 @@ def create_feature_set(
 
     id_column = input_df.select("lsoa_code")
     group_dfs, group_metadata = [id_column], {}
+    output_fitted_scalers = {}
     for group_name, group_config in config.groups.items():
         group_df = input_df.select(group_config.columns)
-        group_df, metadata = process_group(group_df, group_name, group_config)
+        scaler = fitted_scalers.get(group_name)
+        group_df, metadata, scaler = process_group(
+            group_df, group_name, group_config, scaler
+        )
         group_dfs.append(group_df)
         group_metadata[group_name] = metadata
+        output_fitted_scalers[group_name] = scaler
 
     featureset_df = pl.concat(group_dfs, how="horizontal")
 
@@ -126,4 +141,4 @@ def create_feature_set(
     manifest_path = paths.output / f"{output_stem}_config.json"
     manifest_path.write_text(json.dumps(manifest))
 
-    return featureset_df, group_metadata
+    return featureset_df, group_metadata, output_fitted_scalers

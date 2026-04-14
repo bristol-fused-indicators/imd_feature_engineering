@@ -1,6 +1,5 @@
 """Per-group reduction strategies based on group characteristics."""
 
-from pathlib import Path
 from project_paths import paths
 from imd_features.config import FeatureSetConfig, GroupConfig, ReductionMethod
 from imd_features.process import create_feature_set
@@ -196,5 +195,5 @@ config = FeatureSetConfig(
 
 
 if __name__ == "__main__":
-    df, _ = create_feature_set(INPUT_PATH, config)
+    df, *_ = create_feature_set(INPUT_PATH, config)
     print(f"Created {config.output_name}: {df.shape[0]} rows, {df.shape[1]} columns")
