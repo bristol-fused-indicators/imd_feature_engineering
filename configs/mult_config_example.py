@@ -78,5 +78,5 @@ if __name__ == "__main__":
     configs = generate_configs()
 
     for config in configs:
-        df, metadata = create_feature_set(INPUT_PATH, config)
+        df, *_ = create_feature_set(INPUT_PATH, config)
         print(f"  {config.output_name}: {df.shape[1]} columns")

@@ -54,7 +54,7 @@ if __name__ == "__main__":
         paths.input_file
     )  # you can change this if you've added a new input file
 
-    df, _ = create_feature_set(
+    df, *_ = create_feature_set(
         input_path, config
     )  # returns df and metdata dictionary (unused here)
     print(f"Created {config.output_name}: {df.shape[0]} rows, {df.shape[1]} columns")
