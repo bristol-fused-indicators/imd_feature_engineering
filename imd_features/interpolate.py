@@ -306,9 +306,51 @@ def fit_models(
     }
 
 
-def predict_quarter(
-    quarterly_parquet_path: Path, snapshot_date: str
-) -> pl.DataFrame: ...
+def predict_quarter(quarterly_parquet_path: Path, snapshot_date: str) -> pl.DataFrame:
+    objects = fit_models()
+
+    df_input = pl.read_parquet(quarterly_parquet_path)
+    rates_df = create_rate_features(df_input)
+
+    temp_path = project_root / f"temp_{uuid4()}.parquet"
+    rates_df.write_parquet(temp_path)
+    features_df_2025, *_ = create_feature_set(temp_path, config=CONFIG_2025)
+
+    temp_path = project_root / f"temp_{uuid4()}.parquet"
+    rates_df.write_parquet(temp_path)
+    features_df_2019, *_ = create_feature_set(temp_path, config=CONFIG_2019)
+
+    x_2025_unscaled = features_df_2025.select(
+        [
+            column
+            for column in features_df_2025.columns
+            if column not in {"lsoa_code", "snapshot_date"}
+        ]
+    ).to_numpy()
+
+    x_2019_unscaled = features_df_2019.select(
+        [
+            column
+            for column in features_df_2019.columns
+            if column not in {"lsoa_code", "snapshot_date"}
+        ]
+    ).to_numpy()
+
+    scaler_2025 = objects.get(2025).get("scaler")
+    X_2025 = scaler_2025.transform(x_2025_unscaled)
+
+    scaler_2019 = objects.get(2019).get("scaler")
+    X_2019 = scaler_2019.transform(x_2019_unscaled)
+
+    scores = predictor(
+        X_2025=X_2025,
+        X_2019=X_2019,
+        snapshot_date=snapshot_date,
+        model_25=objects.get(2025).get("model"),
+        model_19=objects.get(2019).get("model"),
+    )
+
+    return pl.DataFrame(scores)
 
 
 if __name__ == "__main__":
