@@ -315,10 +315,19 @@ def predict_quarter(quarterly_parquet_path: Path, snapshot_date: str) -> pl.Data
     temp_path = project_root / f"temp_{uuid4()}.parquet"
     rates_df.write_parquet(temp_path)
     features_df_2025, *_ = create_feature_set(temp_path, config=CONFIG_2025)
+    if temp_path.exists():
+        os.remove(temp_path)
 
     temp_path = project_root / f"temp_{uuid4()}.parquet"
     rates_df.write_parquet(temp_path)
     features_df_2019, *_ = create_feature_set(temp_path, config=CONFIG_2019)
+    if temp_path.exists():
+        os.remove(temp_path)
+
+    # i want to be sure that all lsoas are in the same order so they can be joined back together at the end
+    features_df_2019 = features_df_2019.sort("lsoa_code")
+    features_df_2025 = features_df_2025.sort("lsoa_code")
+    lsoa_codes = features_df_2025.get_column("lsoa_code")
 
     x_2025_unscaled = features_df_2025.select(
         [
@@ -350,7 +359,13 @@ def predict_quarter(quarterly_parquet_path: Path, snapshot_date: str) -> pl.Data
         model_19=objects.get(2019).get("model"),
     )
 
-    return pl.DataFrame(scores)
+    return pl.DataFrame(
+        {
+            "lsoa_code": lsoa_codes,
+            "snapshot_date": snapshot_date,
+            "predicted_score": scores,
+        }
+    )
 
 
 if __name__ == "__main__":
