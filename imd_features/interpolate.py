@@ -1,9 +1,25 @@
 from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.preprocessing import StandardScaler
 from imd_features.config import FeatureSetConfig, GroupConfig
+from imd_features.process import create_feature_set
 from project_paths import paths, project_root
 import joblib
 import polars as pl
 from pathlib import Path
+from uuid import uuid4
+import os
+
+input_dir = project_root / "data" / "input"
+
+ANCHOR_FILE_PATHS = {
+    "2019": project_root / "data" / "input" / "combined_data_2019-09-01.parquet",
+    "2025": project_root / "data" / "input" / "combined_data_2025-10-01.parquet",
+}
+
+ANCHOR_TARGET_PATHS = {
+    "2025": project_root / "data" / "input" / "2025_imd_target.parquet",
+    "2019": project_root / "data" / "input" / "2019_imd_target.parquet",
+}
 
 CONFIG_2025 = FeatureSetConfig(
     name="rate_features_test",
@@ -136,32 +152,110 @@ MODEL_2025_PATH = paths.data_models / "2025_model.joblib"
 MODEL_2019_PATH = paths.data_models / "2019_model.joblib"
 
 
-def train_2025_model(data_2025, target_2025):
+def train_2025_model():
 
-    if MODEL_2025_PATH.exists():
+    scaler_path = MODEL_2025_PATH.parent / "2025_fitted_scaler.joblib"
+
+    if MODEL_2025_PATH.exists() and scaler_path.exists():
         model = joblib.load(MODEL_2025_PATH)
-        return model
+        scaler = joblib.load(scaler_path)
+        return model, scaler
 
-    ...
+    input_data = pl.read_parquet(ANCHOR_FILE_PATHS["2025"])
+    targets = pl.read_parquet(ANCHOR_TARGET_PATHS["2025"])
 
-    model = ...
+    rates_df = create_rate_features(input_data)
+
+    temp_path = project_root / f"temp_{uuid4()}.parquet"
+    rates_df.write_parquet(temp_path)
+    features_df, *_ = create_feature_set(temp_path, config=CONFIG_2025)
+    if temp_path.exists():
+        os.remove(temp_path)
+
+    feature_cols = [
+        column
+        for column in features_df.columns
+        if column not in {"lsoa_code", "snapshot_date"}
+    ]
+
+    combined = features_df.join(targets, on="lsoa_code", how="inner")
+    x_unscaled = combined.select(feature_cols).to_numpy()
+    y = combined.get_column("score").to_numpy()
+
+    scaler = StandardScaler().fit(X=x_unscaled)
+    X = scaler.transform(X=x_unscaled)
+
+    model = LinearRegression().fit(X, y)
     joblib.dump(model, MODEL_2025_PATH)
+    joblib.dump(scaler, scaler_path)
 
-    return model
+    return model, scaler
 
 
-def train_2019_model(data_2019, target_2019):
+def train_2019_model():
 
-    if MODEL_2019_PATH.exists():
+    scaler_path = MODEL_2019_PATH.parent / "2019_fitted_scaler.joblib"
+
+    if MODEL_2019_PATH.exists() and scaler_path.exists():
         model = joblib.load(MODEL_2019_PATH)
-        return model
+        scaler = joblib.load(scaler_path)
+        return model, scaler
 
-    ...
+    input_data = pl.read_parquet(ANCHOR_FILE_PATHS["2019"])
+    targets = pl.read_parquet(ANCHOR_TARGET_PATHS["2019"])
 
-    model = ...
+    rates_df = create_rate_features(input_data)
+
+    temp_path = project_root / f"temp_{uuid4()}.parquet"
+    rates_df.write_parquet(temp_path)
+    features_df, *_ = create_feature_set(temp_path, config=CONFIG_2019)
+    if temp_path.exists():
+        os.remove(temp_path)
+
+    feature_cols = [
+        column
+        for column in features_df.columns
+        if column not in {"lsoa_code", "snapshot_date"}
+    ]
+
+    combined = features_df.join(targets, on="lsoa_code", how="inner")
+    x_unscaled = combined.select(feature_cols).to_numpy()
+    y = combined.get_column("score").to_numpy()
+
+    scaler = StandardScaler().fit(X=x_unscaled)
+    X = scaler.transform(X=x_unscaled)
+
+    model = Ridge(alpha=25.3).fit(X, y)
     joblib.dump(model, MODEL_2019_PATH)
+    joblib.dump(scaler, MODEL_2019_PATH.parent / "2019_fitted_scaler.joblib")
 
-    return model
+    return model, scaler
+
+
+def create_rate_features(raw: pl.DataFrame) -> pl.DataFrame:
+    return raw.with_columns(
+        (pl.col("total_crimes") / pl.col("lsoa_population") * 1000).alias(
+            "crime_rate_per_1000"
+        ),
+        (pl.col("violent-crime") / pl.col("lsoa_population") * 1000).alias(
+            "violent_crime_rate"
+        ),
+        (pl.col("burglary") / pl.col("lsoa_population") * 1000).alias("burglary_rate"),
+        (pl.col("drugs") / pl.col("lsoa_population") * 1000).alias("drugs_rate"),
+        (pl.col("total_claims") / pl.col("working_age_population")).alias(
+            "uc_claim_rate"
+        ),
+        (pl.col("total_nwr_claims") / pl.col("working_age_population")).alias(
+            "uc_nwr_rate"
+        ),
+        (pl.col("total_transactions") / pl.col("lsoa_population") * 1000).alias(
+            "transactions_per_capita"
+        ),
+        (pl.col("aged_under_15") / pl.col("lsoa_population")).alias("youth_share"),
+        (pl.col("pension_age_population") / pl.col("lsoa_population")).alias(
+            "elderly_share"
+        ),
+    )
 
 
 def predictor(): ...
