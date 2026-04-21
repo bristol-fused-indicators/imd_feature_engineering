@@ -8,6 +8,8 @@ import polars as pl
 from pathlib import Path
 from uuid import uuid4
 import os
+from datetime import date
+from dateutil.relativedelta import relativedelta
 
 input_dir = project_root / "data" / "input"
 
@@ -258,7 +260,26 @@ def create_rate_features(raw: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def predictor(): ...
+def predictor(X, snapshot_date: str, model_25, model_19):
+    anchor_2025 = date(2025, 10, 1)
+    anchor_2019 = date(2019, 9, 1)
+
+    ref = date.fromisoformat(snapshot_date)
+
+    distance_from_25_anchor = relativedelta(anchor_2025, ref).days
+    distance_from_19_anchor = relativedelta(anchor_2019, ref).days
+
+    w_25 = 1 - (
+        distance_from_19_anchor / (distance_from_19_anchor + distance_from_25_anchor)
+    )
+    w_19 = 1 - w_25
+
+    model_25_score = model_25.predict(X)
+    model_19_score = model_19.predict(X)
+
+    score = w_25 * model_25_score + w_19 * model_19_score
+
+    return score
 
 
 def fit_models(force_retrain: bool = False):
