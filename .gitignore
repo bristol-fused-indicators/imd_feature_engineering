@@ -12,7 +12,10 @@ wheels/
 
 data/**/*.parquet
 !data/input/imd_target.parquet
+!data/input/2019_imd_target.parquet
+!data/input/2025_imd_target.parquet
 
 notebooks/*.pdf
 notebooks/*.tex
 notebooks/*.png
+
