@@ -10,6 +10,7 @@ from uuid import uuid4
 import os
 from datetime import date
 from dateutil.relativedelta import relativedelta
+from icecream import ic
 
 input_dir = project_root / "data" / "input"
 
@@ -150,8 +151,8 @@ CONFIG_2019 = FeatureSetConfig(
     },
 )
 
-MODEL_2025_PATH = paths.data_models / "2025_model.joblib"
-MODEL_2019_PATH = paths.data_models / "2019_model.joblib"
+MODEL_2025_PATH = paths.models / "2025_model.joblib"
+MODEL_2019_PATH = paths.models / "2019_model.joblib"
 
 
 def train_2025_model():
@@ -260,21 +261,27 @@ def create_rate_features(raw: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def predictor(X, snapshot_date: str, model_25, model_19):
+def predictor(X_2025, X_2019, snapshot_date: str, model_25, model_19):
     anchor_2025 = date(2025, 10, 1)
     anchor_2019 = date(2019, 9, 1)
 
     ref = date.fromisoformat(snapshot_date)
 
-    dist_from_25_anchor = relativedelta(anchor_2025, ref).days
-    dist_from_19_anchor = relativedelta(anchor_2019, ref).days
+    ic(anchor_2025, anchor_2019, ref)
+
+    dist_from_25_anchor = abs((anchor_2025 - ref).days)
+    dist_from_19_anchor = abs((anchor_2019 - ref).days)
+
+    ic(dist_from_19_anchor, dist_from_25_anchor)
 
     # larger when closer to 2025, smaller when further away
     w_25 = 1 - (dist_from_25_anchor / (dist_from_19_anchor + dist_from_25_anchor))
     w_19 = 1 - w_25
 
-    model_25_score = model_25.predict(X)
-    model_19_score = model_19.predict(X)
+    ic(w_19, w_25)
+
+    model_25_score = model_25.predict(X_2025)
+    model_19_score = model_19.predict(X_2019)
 
     score = w_25 * model_25_score + w_19 * model_19_score
 
@@ -300,3 +307,7 @@ def fit_models(force_retrain: bool = False):
 def predict_quarter(
     quarterly_parquet_path: Path, snapshot_date: str
 ) -> pl.DataFrame: ...
+
+
+if __name__ == "__main__":
+    predictor(None, None, "2024-03-01", None, None)
