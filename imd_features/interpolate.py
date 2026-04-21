@@ -267,18 +267,12 @@ def predictor(X_2025, X_2019, snapshot_date: str, model_25, model_19):
 
     ref = date.fromisoformat(snapshot_date)
 
-    ic(anchor_2025, anchor_2019, ref)
-
     dist_from_25_anchor = abs((anchor_2025 - ref).days)
     dist_from_19_anchor = abs((anchor_2019 - ref).days)
-
-    ic(dist_from_19_anchor, dist_from_25_anchor)
 
     # larger when closer to 2025, smaller when further away
     w_25 = 1 - (dist_from_25_anchor / (dist_from_19_anchor + dist_from_25_anchor))
     w_19 = 1 - w_25
-
-    ic(w_19, w_25)
 
     model_25_score = model_25.predict(X_2025)
     model_19_score = model_19.predict(X_2019)
@@ -288,7 +282,12 @@ def predictor(X_2025, X_2019, snapshot_date: str, model_25, model_19):
     return score
 
 
-def fit_models(force_retrain: bool = False):
+type Model = LinearRegression | Ridge
+
+
+def fit_models(
+    force_retrain: bool = False,
+) -> dict[int, dict[str, Model | StandardScaler]]:
     if force_retrain:
         for path in [
             MODEL_2019_PATH,
@@ -301,7 +300,10 @@ def fit_models(force_retrain: bool = False):
 
     model_2019, scaler_2019 = train_2019_model()
     model_2025, scaler_2025 = train_2025_model()
-    return (model_2019, scaler_2019), (model_2025, scaler_2025)
+    return {
+        2019: {"model": model_2019, "scaler": scaler_2019},
+        2025: {"model": model_2025, "scaler": scaler_2025},
+    }
 
 
 def predict_quarter(
