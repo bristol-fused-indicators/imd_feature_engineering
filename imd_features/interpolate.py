@@ -266,12 +266,11 @@ def predictor(X, snapshot_date: str, model_25, model_19):
 
     ref = date.fromisoformat(snapshot_date)
 
-    distance_from_25_anchor = relativedelta(anchor_2025, ref).days
-    distance_from_19_anchor = relativedelta(anchor_2019, ref).days
+    dist_from_25_anchor = relativedelta(anchor_2025, ref).days
+    dist_from_19_anchor = relativedelta(anchor_2019, ref).days
 
-    w_25 = 1 - (
-        distance_from_19_anchor / (distance_from_19_anchor + distance_from_25_anchor)
-    )
+    # larger when closer to 2025, smaller when further away
+    w_25 = 1 - (dist_from_25_anchor / (dist_from_19_anchor + dist_from_25_anchor))
     w_19 = 1 - w_25
 
     model_25_score = model_25.predict(X)
