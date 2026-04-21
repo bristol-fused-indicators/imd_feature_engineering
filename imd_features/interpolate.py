@@ -261,7 +261,20 @@ def create_rate_features(raw: pl.DataFrame) -> pl.DataFrame:
 def predictor(): ...
 
 
-def fit_models(force_retrain: bool = False) -> None: ...
+def fit_models(force_retrain: bool = False):
+    if force_retrain:
+        for path in [
+            MODEL_2019_PATH,
+            MODEL_2025_PATH,
+            MODEL_2019_PATH.parent / "2019_fitted_scaler.joblib",
+            MODEL_2025_PATH.parent / "2025_fitted_scaler.joblib",
+        ]:
+            if path.exists():
+                os.remove(path)
+
+    model_2019, scaler_2019 = train_2019_model()
+    model_2025, scaler_2025 = train_2025_model()
+    return (model_2019, scaler_2019), (model_2025, scaler_2025)
 
 
 def predict_quarter(
