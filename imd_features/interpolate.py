@@ -154,6 +154,8 @@ CONFIG_2019 = FeatureSetConfig(
 MODEL_2025_PATH = paths.models / "2025_model.joblib"
 MODEL_2019_PATH = paths.models / "2019_model.joblib"
 
+_FITTED_MODELS = None
+
 
 def train_2025_model():
 
@@ -288,6 +290,9 @@ type Model = LinearRegression | Ridge
 def fit_models(
     force_retrain: bool = False,
 ) -> dict[int, dict[str, Model | StandardScaler]]:
+
+    global _FITTED_MODELS
+
     if force_retrain:
         for path in [
             MODEL_2019_PATH,
@@ -300,14 +305,21 @@ def fit_models(
 
     model_2019, scaler_2019 = train_2019_model()
     model_2025, scaler_2025 = train_2025_model()
-    return {
+
+    _FITTED_MODELS = {
         2019: {"model": model_2019, "scaler": scaler_2019},
         2025: {"model": model_2025, "scaler": scaler_2025},
     }
 
+    return _FITTED_MODELS
+
 
 def predict_quarter(quarterly_parquet_path: Path, snapshot_date: str) -> pl.DataFrame:
-    objects = fit_models()
+
+    if _FITTED_MODELS is None:
+        objects = fit_models()
+    else:
+        objects = _FITTED_MODELS
 
     df_input = pl.read_parquet(quarterly_parquet_path)
     rates_df = create_rate_features(df_input)
@@ -345,18 +357,18 @@ def predict_quarter(quarterly_parquet_path: Path, snapshot_date: str) -> pl.Data
         ]
     ).to_numpy()
 
-    scaler_2025 = objects.get(2025).get("scaler")
+    scaler_2025: StandardScaler = objects[2025]["scaler"]
     X_2025 = scaler_2025.transform(x_2025_unscaled)
 
-    scaler_2019 = objects.get(2019).get("scaler")
+    scaler_2019 = objects[2025]["scaler"]
     X_2019 = scaler_2019.transform(x_2019_unscaled)
 
     scores = predictor(
         X_2025=X_2025,
         X_2019=X_2019,
         snapshot_date=snapshot_date,
-        model_25=objects.get(2025).get("model"),
-        model_19=objects.get(2019).get("model"),
+        model_25=objects[2025]["model"],
+        model_19=objects[2019]["model"],
     )
 
     return pl.DataFrame(
