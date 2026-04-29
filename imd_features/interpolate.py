@@ -166,7 +166,9 @@ def train_2025_model():
         scaler = joblib.load(scaler_path)
         return model, scaler
 
-    input_data = pl.read_parquet(ANCHOR_FILE_PATHS["2025"])
+    input_data = pl.read_parquet(ANCHOR_FILE_PATHS["2025"]).with_columns(
+        pl.lit("2025-10-01").alias("snapshot_date")
+    )
     targets = pl.read_parquet(ANCHOR_TARGET_PATHS["2025"])
 
     rates_df = create_rate_features(input_data)
@@ -206,8 +208,12 @@ def train_2019_model():
         scaler = joblib.load(scaler_path)
         return model, scaler
 
-    input_data = pl.read_parquet(ANCHOR_FILE_PATHS["2019"])
-    targets = pl.read_parquet(ANCHOR_TARGET_PATHS["2019"])
+    input_data = pl.read_parquet(ANCHOR_FILE_PATHS["2019"]).with_columns(
+        pl.lit("2019-09-01").alias("snapshot_date")
+    )
+    targets = pl.read_parquet(ANCHOR_TARGET_PATHS["2019"]).with_columns(
+        pl.col("lsoa_code_2011").alias("lsoa_code")
+    )
 
     rates_df = create_rate_features(input_data)
 
@@ -316,12 +322,17 @@ def fit_models(
 
 def predict_quarter(quarterly_parquet_path: Path, snapshot_date: str) -> pl.DataFrame:
 
+    ic(quarterly_parquet_path, snapshot_date, _FITTED_MODELS is None)
+
     if _FITTED_MODELS is None:
         objects = fit_models()
     else:
         objects = _FITTED_MODELS
 
-    df_input = pl.read_parquet(quarterly_parquet_path)
+    df_input = pl.read_parquet(quarterly_parquet_path).with_columns(
+        pl.lit(snapshot_date).alias("snapshot_date")
+    )
+    ic(df_input.shape, df_input.columns)
     rates_df = create_rate_features(df_input)
 
     temp_path = project_root / f"temp_{uuid4()}.parquet"
@@ -360,7 +371,7 @@ def predict_quarter(quarterly_parquet_path: Path, snapshot_date: str) -> pl.Data
     scaler_2025: StandardScaler = objects[2025]["scaler"]
     X_2025 = scaler_2025.transform(x_2025_unscaled)
 
-    scaler_2019 = objects[2025]["scaler"]
+    scaler_2019 = objects[2019]["scaler"]
     X_2019 = scaler_2019.transform(x_2019_unscaled)
 
     scores = predictor(
